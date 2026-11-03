@@ -12,11 +12,54 @@ LOCK = threading.Lock()
 WEB = Path(__file__).parent / 'web'
 
 
+def reset_game(room):
+    room.update(phase='lobby', round=1, history=[], words={}, events=[], next=set())
+    room['revision'] = room.get('revision', 0) + 1
+
+
+def advance(room):
+    if len(room['players']) < 2:
+        if room['phase'] != 'lobby':
+            reset_game(room)
+        return
+    if room['phase'] == 'input' and all(p['id'] in room['words'] for p in room['players']):
+        entries = [{'name': p['name'], 'word': room['words'][p['id']]} for p in room['players']]
+        room['history'].append(entries)
+        room['phase'] = 'finished' if len({p['word'] for p in entries}) == 1 else 'reveal'
+        room['next'] = set()
+    elif room['phase'] == 'reveal' and all(p['id'] in room.get('next', set()) for p in room['players']):
+        room['round'] += 1
+        room['words'] = {}
+        room['phase'] = 'input'
+
+
+def remove_player(room, token):
+    room['players'] = [p for p in room['players'] if p['id'] != token]
+    room['words'].pop(token, None)
+    room.get('next', set()).discard(token)
+    if not room['players']:
+        ROOMS.pop(room['code'], None)
+        return
+    if room['host'] == token:
+        room['host'] = room['players'][0]['id']
+    advance(room)
+
+
+def cleanup():
+    now = time.monotonic()
+    for room in list(ROOMS.values()):
+        for player in list(room['players']):
+            if now - player['seen'] > 90:
+                remove_player(room, player['id'])
+
+
 def public(room, token):
     return {
         'code': room['code'], 'phase': room['phase'], 'round': room['round'],
         'history': room['history'], 'host': token == room['host'],
-        'players': [{'name': p['name'], 'submitted': p['id'] in room['words'],
+        'revision': room.get('revision', 0),
+        'ready': token in room.get('next', set()), 'readyCount': len(room.get('next', set())),
+        'players': [{'key': p['key'], 'self': p['id'] == token, 'name': p['name'], 'submitted': p['id'] in room['words'],
                      'steps': p['steps']} for p in room['players']],
         'submitted': token in room['words'], 'events': room['events'][-12:],
     }
@@ -48,6 +91,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def action(self, path, data):
+        cleanup()
         if path in ('/api/create', '/api/join'):
             if path == '/api/create':
                 if len(ROOMS) >= 1000:
@@ -69,14 +113,28 @@ class Handler(SimpleHTTPRequestHandler):
                      for b in ('小兔', '小熊', '小猫', '狐狸', '熊猫', '青蛙', '考拉', '小鸭')]
             name = secrets.choice([n for n in names if n not in used_names])
             token = secrets.token_urlsafe(24)
-            room['players'].append(dict(id=token, name=name, steps=0))
+            room['players'].append(dict(id=token, key=secrets.token_hex(8), name=name, steps=0, seen=time.monotonic()))
             room['host'] = room['host'] or token
             return dict(token=token, code=code, state=public(room, token))
         room = ROOMS.get(str(data.get('code', '')).upper())
         token = data.get('token')
         if not room or not any(p['id'] == token for p in room['players']):
             raise ValueError('房间或身份已失效，请重新加入')
-        if path == '/api/start':
+        next(p for p in room['players'] if p['id'] == token)['seen'] = time.monotonic()
+        if path == '/api/leave':
+            remove_player(room, token)
+            return {'left': True}
+        if path in ('/api/restart', '/api/remove'):
+            if token != room['host']:
+                raise ValueError('只有房主可以管理房间')
+            if path == '/api/restart':
+                reset_game(room)
+            else:
+                target = next((p for p in room['players'] if p['key'] == data.get('player')), None)
+                if not target or target['id'] == token:
+                    raise ValueError('请选择其他玩家')
+                remove_player(room, target['id'])
+        elif path == '/api/start':
             if token != room['host'] or room['phase'] != 'lobby':
                 raise ValueError('请等待房主开始')
             if len(room['players']) < 2:
@@ -89,19 +147,12 @@ class Handler(SimpleHTTPRequestHandler):
             if not word or len(word) > 20:
                 raise ValueError('请输入 1～20 个字的词语')
             room['words'][token] = word
-            if len(room['words']) == len(room['players']):
-                entries = [{'name': p['name'], 'word': room['words'][p['id']]} for p in room['players']]
-                room['history'].append(entries)
-                room['phase'] = 'finished' if len(set(room['words'].values())) == 1 else 'reveal'
-                room['next'] = set()
+            advance(room)
         elif path == '/api/next':
             if room['phase'] != 'reveal':
                 raise ValueError('当前不能进入下一轮')
             room['next'].add(token)
-            if len(room['next']) == len(room['players']):
-                room['round'] += 1
-                room['words'] = {}
-                room['phase'] = 'input'
+            advance(room)
         elif path == '/api/play':
             player = next(p for p in room['players'] if p['id'] == token)
             now = time.monotonic()
