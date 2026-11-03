@@ -10,6 +10,13 @@ from pathlib import Path
 ROOMS = {}
 LOCK = threading.Lock()
 WEB = Path(__file__).parent / 'web'
+EXTRA_NICKNAMES = (
+    '犹豫的奶娃6667', '奶家军', '微微一纳很尼尼', '这也是id吗', '剑名且慢',
+    '极品绷灵根', '再也不熬夜了', '女生超帅id', '比带土还爱琳',
+    '神来了也爱上的昵称', '广告位招租', '绝望の老实人', '胃疼霸总惹不起',
+    '事已至此熬夜预习', '测试成绩99分可小刀', '脾气大过奶龙',
+    '大勾大勾叫叫', '用键盘争口气',
+)
 
 
 def reset_game(room):
@@ -112,6 +119,7 @@ class Handler(SimpleHTTPRequestHandler):
             used_names = {p['name'] for p in room['players']}
             names = [a + b for a in ('追风的', '发光的', '好奇的', '快乐的', '散步的', '勇敢的', '慢热的', '爱笑的')
                      for b in ('小兔', '小熊', '小猫', '狐狸', '熊猫', '青蛙', '考拉', '小鸭')]
+            names.extend(EXTRA_NICKNAMES)
             name = secrets.choice([n for n in names if n not in used_names])
             token = secrets.token_urlsafe(24)
             room['players'].append(dict(id=token, key=secrets.token_hex(8), name=name, steps=0, seen=time.monotonic()))
