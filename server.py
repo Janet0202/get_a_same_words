@@ -1,15 +1,18 @@
 """Local development server: python3 server.py."""
 import json
+import hashlib
 import os
 import secrets
 import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOMS = {}
 LOCK = threading.Lock()
 WEB = Path(__file__).parent / 'web'
+ASSET_VERSION = hashlib.sha256(b''.join(p.read_bytes() for p in sorted(WEB.iterdir()) if p.is_file())).hexdigest()[:12]
 EXTRA_NICKNAMES = (
     '犹豫的奶娃6667', '奶家军', '微微一纳很尼尼', '这也是id吗', '剑名且慢',
     '极品绷灵根', '再也不熬夜了', '女生超帅id', '比带土还爱琳',
@@ -69,8 +72,10 @@ def public(room, token):
         'revision': room.get('revision', 0),
         'distance': 100 * sum(len({p['word'] for p in turn}) > 1 for turn in room['history']),
         'ready': token in room.get('next', set()), 'readyCount': len(room.get('next', set())),
-        'players': [{'key': p['key'], 'self': p['id'] == token, 'name': p['name'], 'submitted': p['id'] in room['words']} for p in room['players']],
+        'players': [{'key': p['key'], 'self': p['id'] == token, 'name': p['name'], 'submitted': p['id'] in room['words'], 'steps': 0} for p in room['players']],
         'submitted': token in room['words'],
+        # Older open tabs still read these fields after deployment.
+        'events': [],
         'messages': room['messages'],
     }
 
@@ -78,6 +83,21 @@ def public(room, token):
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB), **kwargs)
+
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-store')
+        super().end_headers()
+
+    def do_GET(self):
+        if urlsplit(self.path).path in ('/', '/index.html'):
+            body = (WEB / 'index.html').read_text().replace('__ASSET_VERSION__', ASSET_VERSION).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            super().do_GET()
 
     def do_POST(self):
         try:
@@ -95,7 +115,6 @@ class Handler(SimpleHTTPRequestHandler):
         body = json.dumps(data, ensure_ascii=False).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
-        self.send_header('Cache-Control', 'no-store')
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
