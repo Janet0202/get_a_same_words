@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 360" fill="none">
+<defs><linearGradient id="sky" x2="0" y2="360" gradientUnits="userSpaceOnUse"><stop stop-color="#e8f0e7"/><stop offset="1" stop-color="#f5f3df"/></linearGradient><pattern id="grass" width="90" height="60" patternUnits="userSpaceOnUse"><path d="m13 36 2-5 2 5m45 10 2-5 2 5" stroke="#bdce9e" stroke-width="2" stroke-linecap="round"/></pattern><g id="tree"><path d="M0 0v38" stroke="#9caa7c" stroke-width="7" stroke-linecap="round"/><path d="M-24 6Q-38-13-16-26Q-24-48 0-52Q26-49 20-25Q43-9 24 9Z" fill="#9fba8e"/><path d="M0-36V9" stroke="#88a57b" stroke-width="2"/></g></defs>
+<path fill="url(#sky)" d="M0 0h1000v360H0z"/>
+<circle cx="804" cy="54" r="26" fill="#f9e8af"/>
+<path d="M0 108Q126 24 244 102Q390 20 530 102Q650 36 775 106Q900 28 1000 88V360H0Z" fill="#d8e3c8"/>
+<path d="M0 155Q142 80 300 136Q470 68 650 148Q850 90 1000 148V360H0Z" fill="#e5eacb"/>
+<path fill="url(#grass)" d="M0 137h1000v223H0z"/>
+<path d="M-75 290C100 290 112 190 290 198S550 289 730 222S882 160 1070 200" stroke="#d3d8b3" stroke-width="105" stroke-linecap="round"/>
+<path d="M-75 283C100 283 112 183 290 191S550 282 730 215S882 153 1070 193" stroke="#f6e8c6" stroke-width="89" stroke-linecap="round"/>
+<path d="M-75 283C100 283 112 183 290 191S550 282 730 215S882 153 1070 193" stroke="#decea9" stroke-width="2" stroke-dasharray="9 12"/>
+<use href="#tree" x="44" y="142"/><use href="#tree" x="99" y="117" transform="translate(20 8) scale(.8)"/><use href="#tree" x="910" y="112"/><use href="#tree" x="964" y="134"/>
+<use href="#tree" x="770" y="111" transform="translate(220 25) scale(.72)"/>
+<ellipse cx="100" cy="327" rx="65" ry="15" fill="#d2dfb7"/><ellipse cx="920" cy="325" rx="80" ry="20" fill="#d2dfb7"/>
+<path d="m79 320 4-14 5 14m25 10 4-18 5 17m781-5 4-18 5 17m27 3 4-13 5 13" stroke="#a7be8d" stroke-width="3" stroke-linecap="round"/>
+<g fill="#fffdf2" opacity=".75"><ellipse cx="360" cy="49" rx="31" ry="10"/><ellipse cx="383" cy="45" rx="23" ry="13"/><ellipse cx="625" cy="35" rx="24" ry="8"/></g>
+</svg>

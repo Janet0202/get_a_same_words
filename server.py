@@ -65,6 +65,7 @@ def public(room, token):
         'code': room['code'], 'phase': room['phase'], 'round': room['round'],
         'history': room['history'], 'host': token == room['host'],
         'revision': room.get('revision', 0),
+        'distance': 100 * sum(len({p['word'] for p in turn}) > 1 for turn in room['history']),
         'ready': token in room.get('next', set()), 'readyCount': len(room.get('next', set())),
         'players': [{'key': p['key'], 'self': p['id'] == token, 'name': p['name'], 'submitted': p['id'] in room['words'],
                      'steps': p['steps']} for p in room['players']],
@@ -114,13 +115,15 @@ class Handler(SimpleHTTPRequestHandler):
             room = ROOMS.get(code)
             if not room:
                 raise ValueError('没有找到这个房间')
-            if room['phase'] != 'lobby' or len(room['players']) >= 8:
+            if room['phase'] != 'lobby' or len(room['players']) >= 5:
                 raise ValueError('房间已开始或已满，请创建新房间')
             used_names = {p['name'] for p in room['players']}
             names = [a + b for a in ('追风的', '发光的', '好奇的', '快乐的', '散步的', '勇敢的', '慢热的', '爱笑的')
                      for b in ('小兔', '小熊', '小猫', '狐狸', '熊猫', '青蛙', '考拉', '小鸭')]
-            names.extend(EXTRA_NICKNAMES)
-            name = secrets.choice([n for n in names if n not in used_names])
+            special = [n for n in EXTRA_NICKNAMES if n not in used_names]
+            normal = [n for n in names if n not in used_names]
+            pool = special if special and secrets.randbelow(100) < 80 else normal
+            name = secrets.choice(pool or special)
             token = secrets.token_urlsafe(24)
             room['players'].append(dict(id=token, key=secrets.token_hex(8), name=name, steps=0, seen=time.monotonic()))
             room['host'] = room['host'] or token

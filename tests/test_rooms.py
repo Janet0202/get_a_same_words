@@ -1,7 +1,8 @@
 import time
 import unittest
+from unittest.mock import patch
 
-from server import Handler, ROOMS
+from server import EXTRA_NICKNAMES, Handler, ROOMS
 
 
 class RoomLifecycleTests(unittest.TestCase):
@@ -131,6 +132,37 @@ class RoomLifecycleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.call('chat', host, text='第501条')
         self.assertEqual(len(room['messages']), 500)
+
+    def test_room_accepts_five_players_but_rejects_sixth(self):
+        players = self.players(5)
+        self.assertEqual(len(players[-1]['state']['players']), 5)
+        with self.assertRaises(ValueError):
+            self.call('join', code=players[0]['code'])
+
+    def test_custom_nickname_weight_and_uniqueness(self):
+        with patch('server.secrets.randbelow', return_value=79):
+            players = self.players(5)
+        names = [p['name'] for p in players[-1]['state']['players']]
+        self.assertEqual(len(set(names)), 5)
+        self.assertTrue(all(name in EXTRA_NICKNAMES for name in names))
+        with patch('server.secrets.randbelow', return_value=80):
+            normal = self.call('create')
+        self.assertNotIn(normal['state']['players'][0]['name'], EXTRA_NICKNAMES)
+
+    def test_distance_increases_on_mismatch_only_and_resets(self):
+        host, a = self.players(2)
+        self.assertEqual(host['state']['distance'], 0)
+        self.call('start', host)
+        for expected in (100, 200):
+            self.call('word', host, word='太阳')
+            self.assertEqual(self.call('word', a, word='沙滩')['distance'], expected)
+            self.call('next', host)
+            self.assertEqual(self.call('next', a)['distance'], expected)
+        self.call('word', host, word='夏天')
+        state = self.call('word', a, word='夏天')
+        self.assertEqual(state['phase'], 'finished')
+        self.assertEqual(state['distance'], 200)
+        self.assertEqual(self.call('restart', host)['distance'], 0)
 
 
 if __name__ == '__main__':
