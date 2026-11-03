@@ -91,6 +91,47 @@ class RoomLifecycleTests(unittest.TestCase):
         self.call('leave', host)
         self.assertNotIn(host['code'], ROOMS)
 
+    def test_chat_sync_isolation_and_restart(self):
+        host, a = self.players(2)
+        other = self.call('create')
+        self.call('start', host)
+        self.call('word', host, word='隐藏的词')
+        self.call('chat', host, text='  我想到了海边 <script>  ')
+        state = self.call('state', a)
+        message = state['messages'][0]
+        self.assertEqual(message['text'], '我想到了海边 <script>')
+        self.assertEqual(message['name'], host['state']['players'][0]['name'])
+        self.assertEqual(message['round'], 1)
+        self.assertEqual(state['history'], [])
+        self.assertEqual(self.call('state', other)['messages'], [])
+        self.call('word', a, word='沙滩')
+        self.call('next', host)
+        self.call('next', a)
+        self.assertEqual(len(self.call('state', a)['messages']), 1)
+        self.assertEqual(self.call('restart', host)['messages'], [])
+
+    def test_chat_validation_rate_limit_and_member_access(self):
+        host, a = self.players(2)
+        for text in (' ', '字' * 201, None, 123):
+            with self.assertRaises(ValueError):
+                self.call('chat', host, text=text)
+        self.call('chat', host, text='字' * 200)
+        with self.assertRaises(ValueError):
+            self.call('chat', host, text='太快')
+        self.call('leave', a)
+        with self.assertRaises(ValueError):
+            self.call('chat', a, text='已离开')
+        with self.assertRaises(ValueError):
+            self.call('chat', code=host['code'], token='invalid', text='访客')
+
+    def test_chat_has_bounded_history(self):
+        host = self.players(1)[0]
+        room = ROOMS[host['code']]
+        room['messages'] = [dict(id=str(i), name='测试', text='消息', round=1) for i in range(500)]
+        with self.assertRaises(ValueError):
+            self.call('chat', host, text='第501条')
+        self.assertEqual(len(room['messages']), 500)
+
 
 if __name__ == '__main__':
     unittest.main()

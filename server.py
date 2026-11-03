@@ -13,7 +13,7 @@ WEB = Path(__file__).parent / 'web'
 
 
 def reset_game(room):
-    room.update(phase='lobby', round=1, history=[], words={}, events=[], next=set())
+    room.update(phase='lobby', round=1, history=[], words={}, events=[], messages=[], next=set())
     room['revision'] = room.get('revision', 0) + 1
 
 
@@ -62,6 +62,7 @@ def public(room, token):
         'players': [{'key': p['key'], 'self': p['id'] == token, 'name': p['name'], 'submitted': p['id'] in room['words'],
                      'steps': p['steps']} for p in room['players']],
         'submitted': token in room['words'], 'events': room['events'][-12:],
+        'messages': room['messages'],
     }
 
 
@@ -100,7 +101,7 @@ class Handler(SimpleHTTPRequestHandler):
                 while code in ROOMS:
                     code = secrets.token_hex(3).upper()
                 ROOMS[code] = dict(code=code, players=[], phase='lobby', round=1,
-                                   history=[], words={}, events=[], host=None)
+                                   history=[], words={}, events=[], messages=[], host=None)
             if path == '/api/join':
                 code = str(data.get('code', '')).upper().strip()
             room = ROOMS.get(code)
@@ -153,6 +154,19 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError('当前不能进入下一轮')
             room['next'].add(token)
             advance(room)
+        elif path == '/api/chat':
+            text = data.get('text', '')
+            if not isinstance(text, str) or not text.strip() or len(text.strip()) > 200:
+                raise ValueError('请输入 1～200 个字的消息')
+            player = next(p for p in room['players'] if p['id'] == token)
+            now = time.monotonic()
+            if now - player.get('last_chat', -1) < 1:
+                raise ValueError('发送太快啦，请稍等一秒')
+            if len(room['messages']) >= 500:
+                raise ValueError('本局聊天已达 500 条上限，重新开局后可以继续')
+            player['last_chat'] = now
+            room['messages'].append(dict(id=secrets.token_hex(8), name=player['name'],
+                                         text=text.strip(), round=room['round']))
         elif path == '/api/play':
             player = next(p for p in room['players'] if p['id'] == token)
             now = time.monotonic()
