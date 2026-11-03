@@ -20,7 +20,7 @@ EXTRA_NICKNAMES = (
 
 
 def reset_game(room):
-    room.update(phase='lobby', round=1, history=[], words={}, events=[], messages=[], next=set())
+    room.update(phase='lobby', round=1, history=[], words={}, messages=[], next=set())
     room['revision'] = room.get('revision', 0) + 1
 
 
@@ -61,15 +61,16 @@ def cleanup():
 
 
 def public(room, token):
+    room['snapshot'] = room.get('snapshot', 0) + 1
     return {
+        'snapshot': room['snapshot'],
         'code': room['code'], 'phase': room['phase'], 'round': room['round'],
         'history': room['history'], 'host': token == room['host'],
         'revision': room.get('revision', 0),
         'distance': 100 * sum(len({p['word'] for p in turn}) > 1 for turn in room['history']),
         'ready': token in room.get('next', set()), 'readyCount': len(room.get('next', set())),
-        'players': [{'key': p['key'], 'self': p['id'] == token, 'name': p['name'], 'submitted': p['id'] in room['words'],
-                     'steps': p['steps']} for p in room['players']],
-        'submitted': token in room['words'], 'events': room['events'][-12:],
+        'players': [{'key': p['key'], 'self': p['id'] == token, 'name': p['name'], 'submitted': p['id'] in room['words']} for p in room['players']],
+        'submitted': token in room['words'],
         'messages': room['messages'],
     }
 
@@ -109,7 +110,7 @@ class Handler(SimpleHTTPRequestHandler):
                 while code in ROOMS:
                     code = secrets.token_hex(3).upper()
                 ROOMS[code] = dict(code=code, players=[], phase='lobby', round=1,
-                                   history=[], words={}, events=[], messages=[], host=None)
+                                   history=[], words={}, messages=[], host=None)
             if path == '/api/join':
                 code = str(data.get('code', '')).upper().strip()
             room = ROOMS.get(code)
@@ -125,7 +126,7 @@ class Handler(SimpleHTTPRequestHandler):
             pool = special if special and secrets.randbelow(100) < 80 else normal
             name = secrets.choice(pool or special)
             token = secrets.token_urlsafe(24)
-            room['players'].append(dict(id=token, key=secrets.token_hex(8), name=name, steps=0, seen=time.monotonic()))
+            room['players'].append(dict(id=token, key=secrets.token_hex(8), name=name, seen=time.monotonic()))
             room['host'] = room['host'] or token
             return dict(token=token, code=code, state=public(room, token))
         room = ROOMS.get(str(data.get('code', '')).upper())
@@ -166,10 +167,17 @@ class Handler(SimpleHTTPRequestHandler):
             room['next'].add(token)
             advance(room)
         elif path == '/api/chat':
+            if data.get('revision', room.get('revision', 0)) != room.get('revision', 0):
+                raise ValueError('本局已重新开始，请重新发送')
             text = data.get('text', '')
             if not isinstance(text, str) or not text.strip() or len(text.strip()) > 200:
                 raise ValueError('请输入 1～200 个字的消息')
             player = next(p for p in room['players'] if p['id'] == token)
+            client_id = data.get('client_id')
+            if client_id is not None and (not isinstance(client_id, str) or not 1 <= len(client_id) <= 80):
+                raise ValueError('消息编号无效')
+            if client_id and any(m.get('client_id') == client_id and m.get('sender') == player['key'] for m in room['messages']):
+                return public(room, token)
             now = time.monotonic()
             if now - player.get('last_chat', -1) < 1:
                 raise ValueError('发送太快啦，请稍等一秒')
@@ -177,17 +185,8 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError('本局聊天已达 500 条上限，重新开局后可以继续')
             player['last_chat'] = now
             room['messages'].append(dict(id=secrets.token_hex(8), name=player['name'],
-                                         text=text.strip(), round=room['round']))
-        elif path == '/api/play':
-            player = next(p for p in room['players'] if p['id'] == token)
-            now = time.monotonic()
-            if now - player.get('last_play', 0) >= 0.3:
-                player['last_play'] = now
-                player['steps'] += 1
-                emoji = data.get('emoji', '👟')
-                if emoji not in ['👟', '💡', '👏', '🤯', '✨']:
-                    emoji = '👟'
-                room['events'].append({'name': player['name'], 'emoji': emoji, 'id': secrets.token_hex(6)})
+                                         text=text.strip(), round=room['round'],
+                                         client_id=client_id, sender=player['key']))
         elif path != '/api/state':
             raise ValueError('未知操作')
         result = public(room, token)

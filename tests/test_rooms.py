@@ -133,6 +133,23 @@ class RoomLifecycleTests(unittest.TestCase):
             self.call('chat', host, text='第501条')
         self.assertEqual(len(room['messages']), 500)
 
+    def test_chat_retry_is_idempotent_and_scoped_to_sender(self):
+        host, guest = self.players(2)
+        first = self.call('chat', host, text='你好', client_id='retry-1')
+        retry = self.call('chat', host, text='你好', client_id='retry-1')
+        self.assertEqual(len(retry['messages']), 1)
+        self.assertEqual(first['messages'][0]['id'], retry['messages'][0]['id'])
+        self.assertGreater(retry['snapshot'], first['snapshot'])
+        other = self.call('chat', guest, text='你好', client_id='retry-1')
+        self.assertEqual(len(other['messages']), 2)
+
+    def test_chat_rejects_message_from_previous_game(self):
+        host = self.players(1)[0]
+        self.call('restart', host)
+        with self.assertRaises(ValueError):
+            self.call('chat', host, text='旧局消息', revision=0)
+        self.assertEqual(self.call('state', host)['messages'], [])
+
     def test_room_accepts_five_players_but_rejects_sixth(self):
         players = self.players(5)
         self.assertEqual(len(players[-1]['state']['players']), 5)
